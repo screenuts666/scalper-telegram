@@ -1,0 +1,33 @@
+name: Montelago Ticket Monitor
+
+on:
+  schedule:
+    # Esegue il controllo ogni 5 minuti in automatico nel cloud
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-tickets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa Dipendenze e Playwright Browser
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          playwright install --with-deps chromium
+
+      - name: Esegui controllo disponibilità biglietti
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python main.py --check-once
