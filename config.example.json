@@ -4,5 +4,6 @@
   "check_interval_seconds": 30,
   "sound_alarm": true,
   "headless": true,
-  "url": "https://shop.ciaotickets.com/ecommerce/abbonamento/1559?lang=it"
+  "url": "https://shop.ciaotickets.com/ecommerce/abbonamento/1559?lang=it",
+  "event_end_date": "2026-08-09"
 }

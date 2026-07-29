@@ -30,6 +30,15 @@ token = os.environ.get("TELEGRAM_BOT_TOKEN", config.get("telegram_bot_token", ""
 chat_id = os.environ.get("TELEGRAM_CHAT_ID", config.get("telegram_chat_id", "")).strip().strip('"').strip("'")
 url = config.get("url", "https://shop.ciaotickets.com/ecommerce/abbonamento/1559?lang=it")
 interval = int(config.get("check_interval_seconds", 30))
+event_end_date_str = os.environ.get("EVENT_END_DATE", config.get("event_end_date", "2026-08-09")).strip()
+
+def is_event_over() -> bool:
+    """Verifica se la data odierna supera la fine del festival (default: 9 Agosto 2026)."""
+    try:
+        end_date = datetime.strptime(event_end_date_str, "%Y-%m-%d")
+        return datetime.now() >= end_date
+    except Exception:
+        return False
 
 notifier = TelegramNotifier(token, chat_id)
 checker = TicketChecker(url=url, headless=True)
@@ -47,6 +56,7 @@ def health():
     return jsonify({
         "status": "online",
         "service": "Montelago 24/7 Monitor & Ultra Fast Telegram Webhook",
+        "event_over": is_event_over(),
         "state": current_ticket_state
     })
 
@@ -75,15 +85,23 @@ def telegram_webhook():
         logging.info(f"📤 Risposta /help inviata a {msg_chat_id} (Esito: {sent})")
 
     elif text in ["/status", "/check"]:
-        avail = current_ticket_state.get("available", False)
-        emoji = "✅ DISPONIBILI!" if avail else "❌ Non Disponibili (Disponibilità terminata)"
-        status_msg = (
-            f"📊 <b>STATUS MONITOR MONTELAGO</b>\n\n"
-            f"<b>Stato:</b> {emoji}\n"
-            f"<b>Dettaglio:</b> {current_ticket_state.get('status_text')}\n"
-            f"<b>Ultimo check:</b> {datetime.now().strftime('%H:%M:%S')}\n\n"
-            f"🔗 <a href='{url}'>Apri Ciaotickets</a>"
-        )
+        if is_event_over():
+            status_msg = (
+                "🏁 <b>MONTELAGO CELTIC FESTIVAL 2026 CONCLUSO!</b>\n\n"
+                "Il festival (5-8 Agosto 2026) si è ufficialmente concluso.\n"
+                "Il monitoraggio automatico su Ciaotickets è stato <b>disattivato</b> per risparmiare risorse Cloud (0% consumo CPU/banda).\n\n"
+                "🎪 <i>Arrivederci alla prossima edizione di Montelago!</i>"
+            )
+        else:
+            avail = current_ticket_state.get("available", False)
+            emoji = "✅ DISPONIBILI!" if avail else "❌ Non Disponibili (Disponibilità terminata)"
+            status_msg = (
+                f"📊 <b>STATUS MONITOR MONTELAGO</b>\n\n"
+                f"<b>Stato:</b> {emoji}\n"
+                f"<b>Dettaglio:</b> {current_ticket_state.get('status_text')}\n"
+                f"<b>Ultimo check:</b> {datetime.now().strftime('%H:%M:%S')}\n\n"
+                f"🔗 <a href='{url}'>Apri Ciaotickets</a>"
+            )
         sent = notifier.send_message_to(msg_chat_id, status_msg)
         logging.info(f"📤 Risposta /status inviata a {msg_chat_id} (Esito: {sent})")
 
@@ -107,6 +125,7 @@ def bg_scanner_process():
             f"🤖 <b>MONTELAGO BOT ONLINE 24/7!</b>\n\n"
             f"📍 URL: {url}\n"
             f"⏱️ Controllo ogni: {interval}s\n"
+            f"🏁 Data fine evento: {event_end_date_str}\n"
             f"💬 Risposte istantanee attive su /help, /status e /test!"
         )
 
@@ -115,6 +134,13 @@ def bg_scanner_process():
     count = 0
 
     while True:
+        if is_event_over():
+            logging.info("🏁 [POST-EVENTO] Festival concluso! Scanner Playwright in pausa per azzerare consumi CPU e risorse.")
+            current_ticket_state["status_text"] = "🏁 Festival 2026 concluso! Monitoraggio disattivato."
+            current_ticket_state["available"] = False
+            time.sleep(3600)
+            continue
+
         count += 1
         now_str = datetime.now().strftime("%H:%M:%S")
         logging.info(f"🔎 [CHECK #{count}] ({now_str}) Controllo Ciaotickets...")
