@@ -5,5 +5,6 @@
   "sound_alarm": true,
   "headless": true,
   "url": "https://shop.ciaotickets.com/ecommerce/abbonamento/1559?lang=it",
+  "test_url": "https://www.ciaotickets.com/it/abbonamenti/abbonamento-3-giorni-emozioni-musica-rosetodegliabruzzi",
   "event_end_date": "2026-08-09"
 }

@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 from flask import Flask, jsonify, request
@@ -29,6 +30,7 @@ config = load_config()
 token = os.environ.get("TELEGRAM_BOT_TOKEN", config.get("telegram_bot_token", "")).strip().strip('"').strip("'")
 chat_id = os.environ.get("TELEGRAM_CHAT_ID", config.get("telegram_chat_id", "")).strip().strip('"').strip("'")
 url = config.get("url", "https://shop.ciaotickets.com/ecommerce/abbonamento/1559?lang=it")
+test_url = config.get("test_url", "https://www.ciaotickets.com/it/abbonamenti/abbonamento-3-giorni-emozioni-musica-rosetodegliabruzzi")
 interval = int(config.get("check_interval_seconds", 30))
 event_end_date_str = os.environ.get("EVENT_END_DATE", config.get("event_end_date", "2026-08-09")).strip()
 
@@ -49,6 +51,41 @@ current_ticket_state = {
     "status_text": "Monitor attivo su Ciaotickets",
     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 }
+
+def run_test_check_bg(target_chat_id: str):
+    """Esegue una scansione Playwright reale in tempo reale sulla pagina di test."""
+    try:
+        logging.info(f"🧪 [TEST REALE] Avvio Playwright su URL di test: {test_url}")
+        test_checker = TicketChecker(url=test_url, headless=True)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        res = loop.run_until_complete(test_checker.check_availability())
+        loop.close()
+
+        is_avail = res.get("available", False)
+        status_txt = res.get("status_text", "Nessun dettaglio")
+
+        if is_avail:
+            alert_msg = (
+                "🎉🎉 <b>TEST NOTIFICA: BIGLIETTI DISPONIBILI!</b> 🎉🎉\n\n"
+                f"<b>URL Test Scansionato:</b>\n{test_url}\n\n"
+                f"<b>Esito Rilevato dal Browser:</b> ✅ {status_txt}\n"
+                f"<b>Dettagli DOM:</b> {res.get('details')}\n\n"
+                f"👉 <b>Acquista subito qui:</b>\n{test_url}\n\n"
+                f"<i>Scansione Playwright reale completata il: {res.get('timestamp')}</i>"
+            )
+        else:
+            alert_msg = (
+                "❌ <b>TEST ESEGUITO: BIGLIETTI NON DISPONIBILI</b>\n\n"
+                f"<b>URL Test Scansionato:</b>\n{test_url}\n\n"
+                f"<b>Esito Rilevato dal Browser:</b> ❌ {status_txt}\n\n"
+                f"<i>Scansione Playwright reale completata il: {res.get('timestamp')}</i>"
+            )
+        sent = notifier.send_message_to(target_chat_id, alert_msg)
+        logging.info(f"📤 Risposta /test inviata a {target_chat_id} (Esito: {sent})")
+    except Exception as e:
+        logging.error(f"⚠️ Errore test background: {e}")
+        notifier.send_message_to(target_chat_id, f"⚠️ <b>Errore durante l'esecuzione del test:</b> {e}")
 
 # 1. HEALTH CHECK HTTP ENDPOINT
 @app.route("/", methods=["GET"])
@@ -78,7 +115,7 @@ def telegram_webhook():
         help_msg = (
             "🎟️ <b>Montelago Ticket Bot Commands</b>\n\n"
             "• /status oppure /check - Stato attuale in tempo reale\n"
-            "• /test - Simula una notifica di biglietto DISPONIBILE\n"
+            "• /test - Esegue una scansione Playwright REALE su un evento attivo di test\n"
             "• /help - Mostra questo messaggio"
         )
         sent = notifier.send_message_to(msg_chat_id, help_msg)
@@ -100,20 +137,19 @@ def telegram_webhook():
                 f"<b>Stato:</b> {emoji}\n"
                 f"<b>Dettaglio:</b> {current_ticket_state.get('status_text')}\n"
                 f"<b>Ultimo check:</b> {datetime.now().strftime('%H:%M:%S')}\n\n"
-                f"🔗 <a href='{url}'>Apri Ciaotickets</a>"
+                f"🔗 <a href='{url}'>Apri Ciaotickets Montelago</a>"
             )
         sent = notifier.send_message_to(msg_chat_id, status_msg)
         logging.info(f"📤 Risposta /status inviata a {msg_chat_id} (Esito: {sent})")
 
     elif text == "/test":
-        sample_alert = (
-            "🎉🎉 <b>TEST NOTIFICA: BIGLIETTI DISPONIBILI!</b> 🎉🎉\n\n"
-            "I biglietti sono stati rilevati come <b>DISPONIBILI</b>!\n\n"
-            f"👉 <b>Acquista subito qui:</b>\nhttps://www.ciaotickets.com/it/abbonamenti/abbonamento-3-giorni-emozioni-musica-rosetodegliabruzzi\n\n"
-            f"<i>Test eseguito con successo! ({datetime.now().strftime('%H:%M:%S')})</i>"
+        notifier.send_message_to(
+            msg_chat_id,
+            "🧪 <b>TEST REALE IN CORSO...</b>\n\n"
+            "Sto avviando il browser Playwright in background per scansionare la pagina di test in tempo reale su Ciaotickets...\n"
+            "<i>(Riceverai l'esito reale tra pochissimi secondi!)</i>"
         )
-        sent = notifier.send_message_to(msg_chat_id, sample_alert)
-        logging.info(f"📤 Risposta /test inviata a {msg_chat_id} (Esito: {sent})")
+        threading.Thread(target=run_test_check_bg, args=(msg_chat_id,), daemon=True).start()
 
     return jsonify({"ok": True})
 
