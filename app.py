@@ -111,6 +111,7 @@ def bg_scanner_process():
         )
 
     last_alert_sent = False
+    last_hourly_report = time.time()
     count = 0
 
     while True:
@@ -145,11 +146,13 @@ def bg_scanner_process():
                         notifier.send_message("ℹ️ <b>Montelago Bot</b>\nI biglietti risultano nuovamente esauriti su Ciaotickets.")
                         last_alert_sent = False
                     
-                    if count % 120 == 0:
+                    if time.time() - last_hourly_report >= 3600:
+                        last_hourly_report = time.time()
                         low_prio_msg = (
                             f"ℹ️ <b>Aggiornamento Orario (Silenzioso)</b>\n\n"
-                            f"Tutto procede regolarmente. Eseguiti {count} controlli.\n"
-                            f"Stato attuale: ❌ Non Disponibili"
+                            f"Tutto procede regolarmente. Eseguiti {count} controlli dall'avvio.\n"
+                            f"Stato attuale: ❌ Non Disponibili\n"
+                            f"Ora report: {datetime.now().strftime('%H:%M:%S')}"
                         )
                         notifier.send_message(low_prio_msg, disable_notification=True)
             else:
